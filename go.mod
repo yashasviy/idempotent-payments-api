@@ -1,4 +1,4 @@
-module github.com/yashasviy/payments-idempotency
+module github.com/yashasviy/idempotent-payments-api
 
 go 1.21
 

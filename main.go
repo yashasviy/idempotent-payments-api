@@ -1,45 +1,60 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-redis/redis/v8"
 	_ "github.com/jackc/pgx/v4/stdlib"
+
+	"github.com/yashasviy/idempotent-payments-api/api"
+	"github.com/yashasviy/idempotent-payments-api/db"
 )
 
 func main() {
-	// 1. Test Redis Connection
+	// 1. Connect to Redis
 	rdb := redis.NewClient(&redis.Options{
 		Addr: os.Getenv("REDIS_ADDR"),
 	})
-	_, err := rdb.Ping(context.Background()).Result()
+
+	// 2. Connect to Postgres
+	var database *sql.DB
+	var err error
+
+	for i := 0; i < 5; i++ {
+		database, err = sql.Open("pgx", os.Getenv("DB_URL"))
+		if err == nil {
+			err = database.Ping()
+		}
+
+		if err == nil {
+			fmt.Println("Postgres Connected Successfully!")
+			break
+		}
+
+		fmt.Println("Waiting for DB...", err)
+		time.Sleep(2 * time.Second)
+	}
+
 	if err != nil {
-		log.Printf("❌ Redis Connection Failed: %v", err)
-	} else {
-		log.Println("✅ Redis Connected!")
+		log.Fatal("Could not connect to database after retries")
 	}
+	defer database.Close()
 
-	// 2. Test Postgres Connection
-	db, err := sql.Open("pgx", os.Getenv("DB_URL"))
-	if err != nil {
-		log.Printf("❌ DB Driver Error: %v", err)
-	}
-	if err = db.Ping(); err != nil {
-		log.Printf("❌ Postgres Ping Failed: %v", err)
-	} else {
-		log.Println("✅ Postgres Connected!")
-	}
+	// 3. Initialize Tables
+	db.Initialize(database)
 
-	// 3. Start Server
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Payments Idempotency API is Running!")
-	})
+	// 4. Setup Router
+	r := chi.NewRouter()
 
-	log.Println("🚀 Server running on port 8080...")
-	http.ListenAndServe(":8080", nil)
+	// TODO: Idempotency Middleware
+	r.Post("/transfer", api.TransferHandler(database))
+
+	fmt.Println("Idempotency API running on port 8080...")
+	http.ListenAndServe(":8080", r)
 }
