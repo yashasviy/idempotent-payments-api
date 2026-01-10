@@ -14,6 +14,7 @@ import (
 
 	"github.com/yashasviy/idempotent-payments-api/api"
 	"github.com/yashasviy/idempotent-payments-api/db"
+	"github.com/yashasviy/idempotent-payments-api/middleware"
 )
 
 func main() {
@@ -52,8 +53,8 @@ func main() {
 	// 4. Setup Router
 	r := chi.NewRouter()
 
-	// TODO: Idempotency Middleware
-	r.Post("/transfer", api.TransferHandler(database))
+	// 5. Idempotency Middleware
+	r.With(middleware.Idempotency(rdb)).Post("/transfer", api.TransferHandler(database))
 
 	fmt.Println("Idempotency API running on port 8080...")
 	http.ListenAndServe(":8080", r)
