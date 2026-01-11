@@ -55,7 +55,7 @@ func (rw *responseWriterWrapper) Write(b []byte) (int, error) {
 //  1. Extract idempotency key from request headers
 //  2. Check Redis cache for existing response
 //  3. Acquire distributed lock to prevent race conditions
-//  4. Process request if not cached
+//  4. Process request if not caad ched
 //  5. Store successful responses in Redis with TTL
 
 func Idempotency(rdb *redis.Client) func(http.Handler) http.Handler {
