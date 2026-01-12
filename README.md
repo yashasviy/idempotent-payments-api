@@ -10,15 +10,54 @@ The system is composed of three core components:
 2. **Lock Manager (Redis):** Distributed locking mechanism to serialize concurrent requests on the same account.
 3. **Persistent Storage (PostgreSQL):** ACID-compliant database storing transaction logs and account balances.
 
+### Request Flow Diagram
+
 ```
-Client Request
-     |
-     v
-[Ledger API]
-     |
-     +---> [Redis Lock Manager]
-     |
-     +---> [PostgreSQL Ledger]
+┌─────────────────┐
+│  Client Request │
+│  POST /transfer │
+└────────┬────────┘
+         │
+         v
+  ┌──────────────────┐
+  │  Ledger API      │
+  │  (Go Handler)    │
+  └────────┬─────────┘
+           │
+           ├─────────────────────────────────────┐
+           │                                     │
+           v                                     v
+    ┌────────────────┐              ┌──────────────────────┐
+    │  Step A: Lock  │              │  Step B: Idempotency │
+    │  Redis SETNX   │              │  Check Postgres DB   │
+    │  lock:user_123 │              │  for duplicate key   │
+    └────────┬───────┘              └──────────┬───────────┘
+             │                                 │
+             │ Lock acquired                   │ Found existing key?
+             │                                 │
+             ├─────────────┬───────────────────┤
+             │             │                   │
+             v             v                   v
+      ┌──────────────┐  (If exists) ────> Return cached
+      │ Step C: Run  │              response (Recovered)
+      │ Transaction  │
+      │ in Postgres  │
+      │ - Deduct $   │
+      │ - Credit $   │
+      │ - Log entry  │
+      └──────┬───────┘
+             │
+             v
+      ┌──────────────────┐
+      │ Step D: Unlock   │
+      │ Redis DEL lock   │
+      └──────┬───────────┘
+             │
+             v
+      ┌──────────────┐
+      │ Send Success │
+      │ Response     │
+      └──────────────┘
 ```
 
 ## Engineering Design Decisions
