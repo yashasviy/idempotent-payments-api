@@ -60,6 +60,47 @@ The system is composed of three core components:
       └──────────────┘
 ```
 
+### Detailed Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as Go API
+    participant Redis as Redis (Lock)
+    participant DB as Postgres (WAL)
+
+    Client->>API: POST /transfer (idempotency_key)
+    
+    Note over API, Redis: 1. Distributed Locking
+    API->>Redis: SETNX lock:user_id (TTL=5s)
+    alt Lock Acquired
+        Redis-->>API: OK
+        
+        Note over API, DB: 2. Idempotency Check
+        API->>DB: SELECT * FROM transactions WHERE key = ?
+        
+        alt Key Exists
+            DB-->>API: Return Previous Result
+            API-->>Client: 200 OK (Cached)
+            API->>Redis: DEL lock:user_id
+        else New Transaction
+            Note over API, DB: 3. ACID Transaction
+            API->>DB: BEGIN TRANSACTION
+            API->>DB: UPDATE balances...
+            API->>DB: INSERT into transactions...
+            API->>DB: COMMIT
+            
+            Note over API, Redis: 4. Unlock
+            API->>Redis: DEL lock:user_id
+            API-->>Client: 200 OK
+        end
+        
+    else Lock Busy
+        Redis-->>API: Fail
+        API-->>Client: 429 Too Many Requests (Retry)
+    end
+```
+
 ## Engineering Design Decisions
 
 ### 1. Race Condition Handling
