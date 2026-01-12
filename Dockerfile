@@ -10,8 +10,8 @@ COPY . .
 # It downloads dependencies and generates the missing go.sum file inside Docker
 RUN go mod tidy
 
-# Build the application
-RUN go build -o main .
+# Build only the API server entrypoint
+RUN go build -o main ./main.go
 
 # Run the binary
 CMD ["./main"]
